@@ -1,0 +1,27 @@
+module div (clk,rst, buad);
+input clk,rst;
+output reg buad;
+reg[15:0] counter;
+wire[15:0] m;
+assign m =clk/(41666/(2*8));
+always@(posedge clk , posedge rst)
+begin 
+	if(rst)
+	begin
+		counter<=16'd0;
+		buad<=0;
+	end 
+	else 
+	begin 
+		if(counter==m)
+		begin 
+			counter<=16'd0;
+			buad<=~buad;
+		end 
+	else
+		begin
+	  		 counter<=counter+1;
+  		end
+ 	end 
+ end 
+endmodule

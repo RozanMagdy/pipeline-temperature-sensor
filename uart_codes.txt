@@ -1,0 +1,196 @@
+module uart (clk_50,rst,Data_in,act,out,txclk);
+input clk_50,rst,act ;
+input [7:0] Data_in ;
+output txclk ;
+output [7:0] out ;
+wire rxclk ,send_data,in;
+ //module boud_rate (clk,rst,rxclk,txclk);
+ boud_rate genertor (.clk(clk_50), .rst(rst), .rxclk(rxclk) ,.txclk(txclk));
+//module tx22(txclk,rst,Data_in,send_data,act);
+tx22 transimeter (.txclk(txclk), .rst(rst), .Data_in(Data_in) ,.send_data(send_data) ,.act(act));
+//module Rx (rxclk, rst, received_bit , soad);
+Rx receive (.rxclk(rxclk), .rst(rst), .received_bit(send_data) ,.soad(out) );
+
+ endmodule
+///////////////////////////////////////////////////////////////////////boud_rate
+module boud_rate (clk,rst,rxclk,txclk);
+ input clk,rst;
+ output rxclk ,txclk ;
+ reg [7:0]rx_counter = 0 ;
+ reg [11:0]tx_counter =0 ;
+ reg rxclk ;
+ reg txclk;
+ 
+ always@(posedge clk , rst)
+ begin
+ tx_counter <= tx_counter + 1;
+ rx_counter <= rx_counter + 1;
+ if (rst) 
+   begin
+   txclk <= 0;
+   rxclk <= 0;
+   
+     end
+     if(tx_counter == 12'b101000101100) //50mhz/(9600*2)
+  begin
+  tx_counter <= 0;
+  txclk <= ~ (txclk);
+  end
+ if(rx_counter == 8'b10100011) //50mhz/(9600*2*16)
+  begin
+  rx_counter <= 0;
+  rxclk <= ~ rxclk;
+  end
+ end
+endmodule
+//////////////////////////////////////////////////////////////rx
+module Rx (rxclk, rst, received_bit , soad);
+  input rxclk, rst, received_bit ;
+  output [7:0]soad;
+  reg [7:0]soad;
+  reg [8:0]allframe;
+  reg [3:0]i=0;
+  reg [1:0]state = 00; 
+reg [0:4] p =0;
+reg [0:4] c =0;
+parameter size1 =8 ;
+parameter size2 = 16 ;
+  always @(posedge rxclk or posedge rst)
+  begin
+    if( rst )
+      begin
+       state = 2'b00;
+       i=0;
+       allframe=0;
+       soad=0;
+       p=0;
+       c=0;
+      end
+    else
+    begin
+       case( state )
+       2'b00:
+    begin 
+       if (received_bit==0)
+       begin
+         state = 2'b00;
+       end
+       else 
+       begin
+         state = 2'b01;
+       end
+     end
+       2'b01: //state  one
+       begin
+        
+         if((i==0)&&(p<=8))
+           begin
+           p=p+1 ;
+                    if (p ==size1) begin       
+                   allframe[i]= received_bit ; //assign first element in the frame after 8 postive edges
+                   i=i+1;
+                   p=0;
+                   end
+           end
+       else if (1<=i<9) begin
+        p=p+1 ;
+           if (p ==size2) begin 
+           allframe[i]= received_bit ;
+           i=i+1;
+           p=0;
+           end
+        end
+       else 
+         begin
+       state=2'b10;
+       i=0;
+         end
+                  
+         
+       end
+       2'b10: //state two
+       begin
+         soad[7:0]= allframe[7:0]; 
+         state=2'b00;
+         
+       end
+    
+     endcase
+  end//else       
+  end //always
+    
+          
+      
+    
+  endmodule
+///////////////////////////////////////////////////////tx
+module tx22(txclk,rst,Data_in,send_data,act);
+input txclk ,rst;
+// boudrate () txclock
+input [7:0]Data_in ;
+output send_data ; //frem
+//output txrad ; // transimeter ready to send //start bit
+reg [9:0] tx_fifo =0;//stores data
+reg [7:0] tx_fifo_em =0;
+reg [1:0] state = 2'b00;
+reg send_data ;
+reg [9:0]temp;  //shift 
+input act ; //active if data received (15 min )
+always @ (posedge txclk or posedge rst) 
+   begin
+      tx_fifo_em = Data_in ;
+        if (rst )
+           begin 
+             send_data<=0; // idle=0
+             tx_fifo <= 0 ;
+          
+           end
+  //  else if (==0)
+    //    send_data <=0 ;
+        else if (act) begin
+          case (state )  
+           2'b00:
+          begin
+             if (tx_fifo_em==Data_in)
+                state <= 2'b01; 
+             else 
+              state <= 2'b00;
+            end
+           2'b01: //framing
+              begin 
+               tx_fifo[9] <= 1 ; //store start
+               tx_fifo[8:1] <= Data_in ;
+               tx_fifo[0] <= 0; //stop bit
+               if  ( (tx_fifo_em!=00000000) && (tx_fifo!=0000000000) ) begin  // tsr (txclk, rst,tx_fifo, send_data); // dff inst_1 (.d(data), .q(net_1), .clk(clock));//tsr(clk,rst,data_in,data_out);6
+                 state <= 2'b10 ;
+                 temp<=tx_fifo; end //loading
+                 
+            else if (tx_fifo_em==00000000) state <= 2'b00 ;
+          else if(tx_fifo==0000000000) state <= 2'b01;
+          end 
+            2'b10 : begin//shift 
+            send_data<=temp[9];
+            temp <= temp<<1;
+            state<=  2'b10;
+            end
+           default:
+             begin
+             state <= 2'b00;
+             send_data <=0;
+             end
+          endcase  
+    
+  
+end
+
+else if (act==0)
+  begin
+    send_data<=0;
+    state <= 2'b00;
+    tx_fifo_em = 0 ;
+  end
+end //always
+endmodule
+
+
+/////////////////////////////////////////////////////////////////////////////////////////

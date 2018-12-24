@@ -1,0 +1,179 @@
+////// system_modules
+module top (clk_50,rst,data_in,Data_out,sec,min,hour,day,month,alarm,shutdown);
+  input clk_50 , rst ;
+  input [7:0] data_in ;
+  output [7:0] Data_out ;
+  output alarm,shutdown ;
+  output [5:0] sec; 
+output [5:0] min;
+output [4:0] hour;
+output [4:0] day;
+output [3:0] month;
+  wire rxclk,txclk ,CLK , active ,act ,sec_clk ;
+   boud_rate generate_tx (.clk(clk_50),.rst(rst),.rxclk(rxclk),.txclk(txclk));
+   seconde generate_sec (.txclk(txclk),.rst(rst),.sec_clk(CLK));
+   
+ digital_clock look(.CLK(sec_clk), .clr(rst),.sec(sec),.min(min),.hour(hour),.day(day),.month(month),.active(act));
+   uart yahala (.clk_50(clk_50),.rst(rst),.Data_in(data_in),.act(act),.out(Data_out));
+ fsm_temp alarm_sh(.temp(data_in),.clk(clk_50),.rst(rst),.alarm(alarm),.shutdown(shutdown));
+ endmodule
+////////////////////////////////////////////
+module seconde (txclk,rst,sec_clk);
+  input txclk ,rst ;
+  output sec_clk ;
+  reg [12:0]sec_counter =0 ;
+ reg sec_clk ;
+always@(posedge txclk , rst)
+ begin
+ sec_counter <= sec_counter + 1;
+ if (rst) 
+   sec_clk <= 0;  
+if(sec_counter == 13'b1001011000000) //9600/2
+  begin
+  sec_counter <= 0;
+  sec_clk <= ~ (sec_clk);
+  end
+end 
+ endmodule  
+//////////////////////////////////////////////////////////// digital
+module digital_clock (CLK, clr,sec,min,hour,day,month,active);
+input CLK;
+input clr; // clear counter
+output [5:0] sec; // counter value
+reg [5:0] sec;
+output [5:0] min;
+reg [5:0] min;
+output [4:0] hour;
+reg [4:0] hour;
+output [4:0] day;
+reg [4:0] day;
+output [3:0] month;
+reg [3:0] month = 2;
+output active ;
+reg active = 0 ;
+reg [3:0]countmin;
+always @(posedge CLK ,posedge clr)
+begin
+    active<= 0;
+if (clr) 
+  begin
+  sec <= 0;
+  min <= 0;
+  hour <= 0;
+  day <= 0;
+  active <=0 ;
+  countmin<=0;
+  end
+else 
+begin
+
+  if ( sec==59)
+    begin
+      sec<=0;
+      min<=min+1;
+      countmin<=countmin+1;
+    end
+  else sec<=sec+1;
+    
+  if ( min ==59 )
+    begin 
+      min<=0;
+      hour<=hour+1;
+    end
+  if ( hour == 24)
+    begin
+      hour<=0;
+      day<=day+1;
+    end
+    
+   if ( day == 30)
+    begin
+      day<=0;
+      month<= month +1;
+    end 
+if ( countmin==15 ) /*indicate every 15 min */
+  begin 
+  active <= 1; 
+  countmin<=0;  
+  end 
+else 
+  active<=0;
+
+ 
+ end
+ end 
+ endmodule
+ 
+///////////////////////////////////////////////////////
+module fsm_temp (temp,clk,rst,alarm,shutdown);
+input [7:0] temp;
+input clk ,rst;
+output alarm ;
+output shutdown ;
+reg alarm;
+reg shutdown ;
+reg [1:0] state ;
+
+always @ (posedge clk, posedge rst )
+begin
+   if( rst )
+       state <= 2'b00;
+   else
+   begin
+       case( state )
+       2'b00:  /*no problem state*/
+       begin
+            if( (250 > temp)&&(temp >= 200 ) ) 
+              begin
+              state <= 2'b01;
+               alarm<=1 ;
+               shutdown<=0;
+              end
+            else if(temp <200)
+               begin
+               state <= 2'b00; 
+               alarm<=0; 
+               shutdown<=0;
+               end
+       end
+
+       2'b01:  /*alarm state*/
+       begin
+            if( temp >= 250) 
+              begin
+              state <= 2'b10; 
+              alarm<=1 ;
+              shutdown<=1;
+              end
+            else if( (250 > temp)&&(temp >= 200 ) ) 
+               begin
+                 state <= 2'b01; 
+                  alarm<=1;
+                  shutdown<=0;
+               end
+       end
+
+       2'b10: /*shut down state*/
+       begin
+          if( (250 > temp)&&(temp >= 200 ) ) 
+             begin
+             state <= 2'b01; 
+             alarm<=1; 
+             shutdown<=0;
+             end
+          else if(temp <200)
+                begin
+                  state <= 2'b00; 
+                  alarm<=0;
+                 shutdown<=0; 
+               end
+        end
+     endcase
+ end
+ end
+ 
+ 
+    
+       
+     endmodule
+
